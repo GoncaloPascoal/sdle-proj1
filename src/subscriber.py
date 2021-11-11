@@ -1,4 +1,5 @@
 
+import zmq
 from argparse import ArgumentParser
 
 def main():
@@ -10,7 +11,19 @@ def main():
 
     args = parser.parse_args()
 
+    context = zmq.Context()
+
+    # Connect to proxy
+    socket = context.socket(zmq.SUB)
+    socket.connect(f'tcp://{args.proxy_addr}:{args.proxy_port}')
+
     print(f'Subscriber #{args.id} online...')
+
+    socket.setsockopt(zmq.SUBSCRIBE, b'test')
+
+    while True:
+        string = socket.recv_string()
+        print(string)
 
 if __name__ == '__main__':
     main()
