@@ -21,6 +21,8 @@ def main():
     parser_put.add_argument('message', help='message to send')
 
     for subparser in [parser_get, parser_sub, parser_unsub]:
+        subparser.add_argument('ip', help='ip of target client')
+        subparser.add_argument('port', help='port of target client')
         subparser.add_argument('subscriber_id', help='id of the subscriber')
         subparser.add_argument('topic_id', help='id of the topic')
 
