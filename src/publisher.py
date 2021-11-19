@@ -3,7 +3,7 @@ import zmq
 from argparse import ArgumentParser
 
 def put(sock_proxy: zmq.Socket, message: str):
-    print('PUT message: ', message)
+    print(f'PUT message: {message}')
     sock_proxy.send_string(message)
 
 def main():

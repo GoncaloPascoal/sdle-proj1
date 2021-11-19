@@ -1,7 +1,6 @@
 
 import zmq
 from argparse import ArgumentParser
-from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
 from queue import SimpleQueue
 
@@ -11,7 +10,7 @@ topic_to_msgs = {}
 
 def get(topic: str) -> bool:
     if topic in topic_to_msgs:
-        msg = topic_to_msgs[topic].get()
+        msg = topic_to_msgs[topic].get() # TODO: the code is blocking here
         print(f'GET message: {msg}')
         return True
 
@@ -55,13 +54,6 @@ def handle_command(sock_rpc: zmq.Socket, sock_proxy: zmq.Socket, command: dict):
     else:
         sock_rpc.send_string('Error: malformed command')
 
-def rpc_listen(sock_rpc: zmq.Socket, sock_proxy: zmq.Socket):
-    pool = ThreadPoolExecutor(NUM_THREADS)
-
-    while True:
-        command = sock_rpc.recv_json()
-        pool.submit(handle_command(sock_rpc, sock_proxy, command))
-
 def main():
     parser = ArgumentParser(description='Process that subscribes to topics and receives messages.')
     
@@ -82,17 +74,31 @@ def main():
     sock_rpc = context.socket(zmq.REP)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
-    rpc_thread = Thread(target=rpc_listen, args=(sock_rpc, sock_proxy))
-    rpc_thread.start()
+    # Poller to read from the sockets
+    poller = zmq.Poller()
+    poller.register(sock_proxy, zmq.POLLIN)
+    poller.register(sock_rpc  , zmq.POLLIN)
 
+    pool = ThreadPoolExecutor(NUM_THREADS) # TODO: make sure the sockets are thread safe
+    
     print(f'Subscriber #{args.id} online...')
 
     while True:
-        msg: str = sock_proxy.recv_string()
+        events = poller.poll()
 
-        for t, q in topic_to_msgs.items():
-            if msg.startswith(t):
-                q.put(msg)
+        for event in events:
+            socket = event[0]
+
+            if socket is sock_proxy:
+                msg: str = sock_proxy.recv_string()
+
+                for t, q in topic_to_msgs.items():
+                    if msg.startswith(t):
+                        q.put(msg)
+
+            elif socket is sock_rpc:
+                command = sock_rpc.recv_json()
+                pool.submit(handle_command, sock_rpc, sock_proxy, command)
 
 
 if __name__ == '__main__':
