@@ -43,7 +43,7 @@ def handle_command(sock_rpc: zmq.Socket, sock_proxy: zmq.Socket, command: dict):
         topic = command['topic']
 
         if method == 'GET':
-            if get(topic):
+            if not get(topic):
                 sock_rpc.send_string(f'Error: not subscribed to topic: {topic}')
                 return
         elif method == 'SUB':
