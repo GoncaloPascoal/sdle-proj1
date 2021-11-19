@@ -2,7 +2,7 @@
 import binascii, os, zmq
 
 class Pipe:
-    def __init__(self, context):
+    def __init__(self, context: zmq.Context):
         self.sock_in = context.socket(zmq.PAIR)
         self.sock_out = context.socket(zmq.PAIR)
 
