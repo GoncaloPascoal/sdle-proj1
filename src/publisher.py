@@ -37,7 +37,7 @@ def main():
             put(sock_proxy, command['message'])
             sock_rpc.send_string('OK')
         else:
-            sock_rpc.send_string('Error')
+            sock_rpc.send_string('Error: malformed command')
 
 
 if __name__ == '__main__':
