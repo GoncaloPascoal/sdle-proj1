@@ -1,31 +1,66 @@
 
 import zmq
 from argparse import ArgumentParser
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+from queue import SimpleQueue
 
-def process_command(sock_proxy: zmq.Socket, command: dict):
-    commands = {
-        'GET': get,
-        'SUB': sub,
-        'UNSUB': unsub,
-    }
+NUM_THREADS = 20
 
-    if (isinstance(command, dict)
-        and set(['method', 'topic']).issubset(command.keys())
-        and command['method'] in commands.keys()):
-        commands['method'](sock_proxy, command['topic'])
+topic_to_msgs = {}
+
+def get(topic: str) -> bool:
+    if topic in topic_to_msgs:
+        msg = topic_to_msgs[topic].get()
+        print(f'GET message: {msg}')
         return True
 
     return False
 
-def get(sock_proxy: zmq.Socket, topic: str):
-    string = sock_proxy.recv_string() # TODO: get string from specific topic
-    print(string)
-
-def sub(sock_proxy: zmq.Socket, topic: str):
+def sub(sock_proxy: zmq.Socket, topic: str) -> bool:
     sock_proxy.setsockopt_string(zmq.SUBSCRIBE, topic)
 
-def unsub(sock_proxy: zmq.Socket, topic: str):
+    if topic not in topic_to_msgs:
+        topic_to_msgs[topic] = SimpleQueue()
+
+    print(f'SUB to topic: {topic}')
+
+def unsub(sock_proxy: zmq.Socket, topic: str) -> bool:
     sock_proxy.setsockopt_string(zmq.UNSUBSCRIBE, topic)
+
+    if topic in topic_to_msgs:
+        del topic_to_msgs[topic]
+
+    print(f'UNSUB from topic: {topic}')
+
+def handle_command(sock_rpc: zmq.Socket, sock_proxy: zmq.Socket, command: dict):
+    commands = {'GET', 'SUB', 'UNSUB'}
+
+    if (isinstance(command, dict)
+        and set(['method', 'topic']).issubset(command.keys())
+        and command['method'] in commands):
+        method = command['method']
+        topic = command['topic']
+
+        if method == 'GET':
+            if get(topic):
+                sock_rpc.send_string(f'Error: not subscribed to topic: {topic}')
+                return
+        elif method == 'SUB':
+            sub(sock_proxy, topic)
+        elif method == 'UNSUB':
+            unsub(sock_proxy, topic)
+        
+        sock_rpc.send_string('OK')
+    else:
+        sock_rpc.send_string('Error: malformed command')
+
+def rpc_listen(sock_rpc: zmq.Socket, sock_proxy: zmq.Socket):
+    pool = ThreadPoolExecutor(NUM_THREADS)
+
+    while True:
+        command = sock_rpc.recv_json()
+        pool.submit(handle_command(sock_rpc, sock_proxy, command))
 
 def main():
     parser = ArgumentParser(description='Process that subscribes to topics and receives messages.')
@@ -47,19 +82,18 @@ def main():
     sock_rpc = context.socket(zmq.REP)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
+    rpc_thread = Thread(target=rpc_listen, args=(sock_rpc, sock_proxy))
+    rpc_thread.start()
+
     print(f'Subscriber #{args.id} online...')
 
-    sock_proxy.setsockopt(zmq.SUBSCRIBE, b'test')
-
     while True:
-        command = sock_rpc.recv_json()
+        msg: str = sock_proxy.recv_string()
 
-        ok = process_command(sock_proxy, command)
+        for t, q in topic_to_msgs.items():
+            if msg.startswith(t):
+                q.put(msg)
 
-        if ok:
-            sock_rpc.send_string('OK')
-        else:
-            sock_rpc.send_string('Error') 
 
 if __name__ == '__main__':
     main()
