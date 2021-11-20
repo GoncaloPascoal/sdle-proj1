@@ -10,7 +10,6 @@ def put(sock_proxy: zmq.Socket, message: str):
 def main():
     parser = ArgumentParser(description='Process that publishes messages to topics.')
     
-    parser.add_argument('id', help='id of the publisher')
     parser.add_argument('port', help='publisher listening port')
     parser.add_argument('proxy_addr', help='address of the proxy to connect to')
     parser.add_argument('proxy_port', type=int, help='port of the proxy to connect to')
@@ -27,7 +26,7 @@ def main():
     sock_rpc = context.socket(zmq.REP)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
-    print(f'Publisher #{args.id} online...')
+    print(f'Publisher online...')
 
     while True:
         command = sock_rpc.recv_json()
