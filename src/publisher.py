@@ -3,8 +3,9 @@ import zmq
 from argparse import ArgumentParser
 
 def put(sock_proxy: zmq.Socket, message: str):
-    print(f'PUT message: {message}')
     sock_proxy.send_string(message)
+    _ = sock_proxy.recv_string()
+    print(f'PUT message: {message}')
 
 def main():
     parser = ArgumentParser(description='Process that publishes messages to topics.')
@@ -19,7 +20,7 @@ def main():
     context = zmq.Context()
 
     # Connect to proxy
-    sock_proxy = context.socket(zmq.PUB)
+    sock_proxy = context.socket(zmq.DEALER)
     sock_proxy.connect(f'tcp://{args.proxy_addr}:{args.proxy_port}')
 
     # Socket for listening to commands

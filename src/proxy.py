@@ -5,7 +5,14 @@ from argparse import ArgumentParser
 
 from utils import Pipe
 
-def listen(pipe_end):
+
+def parse_msg(parts):
+    r_id = int.from_bytes(parts[0], byteorder='big')
+    msg = parts[1].decode('utf-8')
+
+    return r_id, msg
+
+def listen(pipe_end: zmq.Socket):
     while True:
         try:
             print(pipe_end.recv_string())
@@ -28,12 +35,12 @@ def main():
     context = zmq.Context()
 
     # Socket for publishers
-    frontend = context.socket(zmq.XSUB)
-    frontend.bind(f'tcp://127.0.0.1:{args.publisher_port}')
+    sock_pub = context.socket(zmq.ROUTER)
+    sock_pub.bind(f'tcp://*:{args.publisher_port}')
     
     # Socket for subscribers
-    backend = context.socket(zmq.XPUB)
-    backend.bind(f'tcp://127.0.0.1:{args.subscriber_port}')
+    sock_sub = context.socket(zmq.XPUB)
+    sock_sub.bind(f'tcp://*:{args.subscriber_port}')
 
     pipe = Pipe(context)
     listener = Thread(target=listen, args=(pipe.sock_in,))
@@ -41,10 +48,17 @@ def main():
 
     # Run the proxy
     zmq.proxy(frontend, backend, pipe.sock_out)
+    while True:
+        parts = sock_pub.recv_multipart()
+        _, msg = parse_msg(parts)
+        sock_sub.send(msg)
 
-    frontend.close()
-    backend.close()
-    context.destroy()
+        for t, q in TOPIC_TO_MSGS.items():
+            if msg.startswith(t):
+                q.put(msg)
+                
+        parts[1] = b''
+        sock_pub.send_multipart(parts)
 
 if __name__ == '__main__':
     main()
