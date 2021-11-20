@@ -32,6 +32,17 @@ def unsub(sock_proxy: zmq.Socket, topic: str) -> bool:
 
     print(f'UNSUB from topic: {topic}')
 
+def handle_get_command(context: zmq.Context, topic: str):
+    # Open a Socket for inter-thread comunication
+    socket = context.socket(zmq.PUSH)
+    socket.connect('inproc://get-socket')
+
+    # Handle the get command
+    if not get(topic):
+        socket.send_string(f'Error: not subscribed to topic: {topic}')
+    else:
+        socket.send_string('OK')
+
 def main():
     parser = ArgumentParser(description='Process that subscribes to topics and receives messages.')
     
@@ -52,13 +63,18 @@ def main():
     sock_rpc = context.socket(zmq.REP)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
+    # Socket for listening to get threads
+    sock_get = context.socket(zmq.PULL)
+    sock_get.bind('inproc://get-socket')
+
     # Poller to read from the sockets
     poller = zmq.Poller()
     poller.register(sock_proxy, zmq.POLLIN)
     poller.register(sock_rpc  , zmq.POLLIN)
+    poller.register(sock_get  , zmq.POLLIN)
 
     commands = {'GET', 'SUB', 'UNSUB'}
-    # pool = ThreadPoolExecutor(NUM_THREADS) # TODO: make sure the sockets are thread safe
+    pool = ThreadPoolExecutor(NUM_THREADS)
     
     print(f'Subscriber #{args.id} online...')
 
@@ -84,9 +100,8 @@ def main():
                     topic = command['topic']
 
                     if method == 'GET':
-                        if not get(topic):
-                            sock_rpc.send_string(f'Error: not subscribed to topic: {topic}')
-                            return
+                        pool.submit(handle_get_command, context, topic)
+                        continue
                     elif method == 'SUB':
                         sub(sock_proxy, topic)
                     elif method == 'UNSUB':
@@ -95,8 +110,9 @@ def main():
                     sock_rpc.send_string('OK')
                 else:
                     sock_rpc.send_string('Error: malformed command')
-                #pool.submit(handle_command, context, args.port, args.proxy_addr, args.proxy_port, command)
-
+            elif socket is sock_get:
+                msg: str = sock_get.recv_string()
+                sock_rpc.send_string(msg)
 
 if __name__ == '__main__':
     main()
