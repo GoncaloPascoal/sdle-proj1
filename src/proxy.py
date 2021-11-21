@@ -8,13 +8,11 @@ from argparse import ArgumentParser
 
 from utils import Message, save_state
 
-MAX_QUEUE_LENGTH = 1000
-
 class ServiceState:
     def __init__(self):
         self._counter = 0
         self.topic_queues = {}
-        # self.topic_pointers = {}
+        self.topic_pointers = {}
     
     def next_id(self):
         i = self._counter
@@ -63,8 +61,18 @@ def main():
             can connect to')
     parser.add_argument('subscriber_port', type=int, help='port where subscribers \
             can connect to')
+    parser.add_argument('-q', '--queue_size', type=int, default=1000, help='maximum \
+            queue size for each topic')
 
     args = parser.parse_args()
+
+    if args.queue_size <= 0:
+        print('Error: queue_size argument must be a positive value')
+        exit(1)
+    
+    if args.publisher_port == args.subscriber_port:
+        print('Error: publisher port and subscriber port cannot be the same')
+        exit(1)
 
     state = ServiceState()
     if os.path.exists('service.obj'):
@@ -108,7 +116,7 @@ def main():
 
                 for t, q in state.topic_queues.items():
                     if msg.s.startswith(t):
-                        if len(q) == MAX_QUEUE_LENGTH:
+                        if len(q) == args.queue_size:
                             q.popleft()
                         q.append(msg)
 
