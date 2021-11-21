@@ -5,6 +5,7 @@ import pickle, os
 from collections import deque
 from threading import Thread
 from argparse import ArgumentParser
+from typing import List, Tuple
 
 from utils import Message, save_state
 
@@ -14,12 +15,12 @@ class ServiceState:
         self.topic_queues = {}
         self.topic_pointers = {}
     
-    def next_id(self):
+    def next_id(self) -> int:
         i = self._counter
         self._counter += 1
         return i
 
-def binary_search(lst, val):
+def binary_search(lst: List[Message], val: int) -> int:
     low = 0
     high = len(lst) - 1
     mid = 0
@@ -37,7 +38,7 @@ def binary_search(lst, val):
     mid = mid + 1 if lst and lst[-1].i < val else mid
     return mid
 
-def parse_msg(parts):
+def parse_msg(parts: list) -> Tuple[int, str]:
     r_id = int.from_bytes(parts[0], byteorder='big')
     msg = parts[1].decode('utf-8')
 

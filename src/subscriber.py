@@ -85,7 +85,7 @@ def handle_get_command(context: zmq.Context, topic: str, parts: list):
     socket.send_multipart(parts)
     socket.close()
 
-def route_msg_to_queues(msg):
+def route_msg_to_queues(msg: Message):
     for k, v in state.topic_to_msgs.items():
         if msg.s.startswith(k) and msg.i > v.last_id:
             v.queue.put(msg)
