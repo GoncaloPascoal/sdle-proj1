@@ -1,7 +1,7 @@
 
 import zmq
 
-import pickle, os, copyreg, threading
+import pickle, os, copyreg, threading, json
 from threading import Thread
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor
@@ -70,17 +70,19 @@ def unsub(sock_proxy: zmq.Socket, topic: str) -> bool:
 
     print(f'UNSUB from topic: {topic}')
 
-def handle_get_command(context: zmq.Context, topic: str):
+def handle_get_command(context: zmq.Context, topic: str, parts: list):
     # Open a Socket for inter-thread comunication
     socket = context.socket(zmq.PUSH)
-    socket.connect('inproc://get-socket')
+    socket.connect('inproc://get')
 
     # Handle the get command
-    if not get(topic):
-        socket.send_string(f'Error: not subscribed to topic: {topic}')
+    if get(topic):
+        res = 'OK'
     else:
-        socket.send_string('OK')
+        res = f'Error: not subscribed to topic: {topic}'
     
+    parts[2] = res.encode('utf-8')
+    socket.send_multipart(parts)
     socket.close()
 
 def route_msg_to_queues(msg):
@@ -134,12 +136,12 @@ def main():
             route_msg_to_queues(msg)
 
     # Socket for listening to commands
-    sock_rpc = context.socket(zmq.REP)
+    sock_rpc = context.socket(zmq.ROUTER)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
     # Socket for listening to get threads
     sock_get = context.socket(zmq.PULL)
-    sock_get.bind('inproc://get-socket')
+    sock_get.bind('inproc://get')
 
     # Poller to read from the sockets
     poller = zmq.Poller()
@@ -168,7 +170,8 @@ def main():
                 sock_proxy.send(b'\x02' + bytes(args.id + ' ' + str(msg.i), 'utf-8'))
                 route_msg_to_queues(msg)
             elif socket is sock_rpc:
-                command = sock_rpc.recv_json()
+                parts = sock_rpc.recv_multipart()
+                command = json.loads(parts[2].decode('utf-8'))
 
                 if (isinstance(command, dict)
                     and set(['method', 'topic']).issubset(command.keys())
@@ -177,19 +180,21 @@ def main():
                     topic = command['topic']
 
                     if method == 'GET':
-                        pool.submit(handle_get_command, context, topic)
+                        pool.submit(handle_get_command, context, topic, parts)
                         continue
                     elif method == 'SUB':
                         sub(sock_proxy, topic)
                     elif method == 'UNSUB':
                         unsub(sock_proxy, topic)
                     
-                    sock_rpc.send_string('OK')
+                    parts[2] = b'OK'
                 else:
-                    sock_rpc.send_string('Error: malformed command')
+                    parts[2] = b'Error: malformed command'
+                
+                sock_rpc.send_multipart(parts)
             elif socket is sock_get:
-                msg: str = sock_get.recv_string()
-                sock_rpc.send_string(msg)
+                parts = sock_get.recv_multipart()
+                sock_rpc.send_multipart(parts)
 
 if __name__ == '__main__':
     main()

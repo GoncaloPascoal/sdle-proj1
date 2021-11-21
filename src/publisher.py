@@ -1,5 +1,7 @@
 
 import zmq
+
+import json
 from argparse import ArgumentParser
 
 def put(sock_proxy: zmq.Socket, message: str):
@@ -23,21 +25,25 @@ def main():
     sock_proxy.connect(f'tcp://{args.proxy_addr}:{args.proxy_port}')
 
     # Socket for listening to commands
-    sock_rpc = context.socket(zmq.REP)
+    sock_rpc = context.socket(zmq.ROUTER)
     sock_rpc.bind(f'tcp://*:{args.port}')
 
     print(f'Publisher online...')
 
     while True:
-        command = sock_rpc.recv_json()
+        parts = sock_rpc.recv_multipart()
+        command = json.loads(parts[2].decode('utf-8'))
         
         if (isinstance(command, dict) 
             and set(['method', 'message']).issubset(command.keys())
             and command['method'] == 'PUT'):
             put(sock_proxy, command['message'])
-            sock_rpc.send_string('OK')
+
+            parts[2] = b'OK'
         else:
-            sock_rpc.send_string('Error: malformed command')
+            parts[2] = b'Error: malformed command'
+        
+        sock_rpc.send_multipart(parts)
 
 
 if __name__ == '__main__':
