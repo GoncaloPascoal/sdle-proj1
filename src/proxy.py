@@ -2,16 +2,19 @@
 import zmq
 
 import pickle, os
+from collections import deque
 from threading import Thread
 from argparse import ArgumentParser
 
 from utils import Message, save_state
 
+MAX_QUEUE_LENGTH = 1000
+
 class ServiceState:
     def __init__(self):
         self._counter = 0
         self.topic_queues = {}
-        self.topic_pointers = {}
+        # self.topic_pointers = {}
     
     def next_id(self):
         i = self._counter
@@ -105,6 +108,8 @@ def main():
 
                 for t, q in state.topic_queues.items():
                     if msg.s.startswith(t):
+                        if len(q) == MAX_QUEUE_LENGTH:
+                            q.popleft()
                         q.append(msg)
 
                 parts[1] = b''
@@ -115,7 +120,7 @@ def main():
                 if msg_b[0] == 1:
                     # Subscription
                     topic = msg_b[1:].decode('utf-8')
-                    state.topic_queues.setdefault(topic, [])
+                    state.topic_queues.setdefault(topic, deque())
                 elif msg_b[0] == 2:
                     parts = msg_b[1:].decode('utf-8').split(' ')
                     sub_id, msg_id = parts[0], parts[1]
@@ -125,7 +130,7 @@ def main():
 
                 r = set()
                 for k, v in msg.items():
-                    queue = state.topic_queues[k]
+                    queue = list(state.topic_queues[k])
                     r = r.union(queue[binary_search(queue, v):])
                 
                 sock_recover.send_pyobj(r)
