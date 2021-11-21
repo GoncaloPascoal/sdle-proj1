@@ -1,13 +1,13 @@
 
 import zmq
 
-import pickle, os
+import pickle, os, atexit
 from collections import deque
 from threading import Thread
 from argparse import ArgumentParser
 from typing import List, Tuple
 
-from utils import Message, save_state
+from utils import Message, save_state, save_state_periodically
 
 class ServiceState:
     def __init__(self):
@@ -98,7 +98,9 @@ def main():
     poller.register(sock_sub, zmq.POLLIN)
     poller.register(sock_recover, zmq.POLLIN)
 
-    thread_state = Thread(target=save_state, args=(state, 'service.obj'))
+    atexit.register(save_state, state, 'service_obj')
+
+    thread_state = Thread(target=save_state_periodically, args=(state, 'service.obj'))
     thread_state.start()
 
     while True:

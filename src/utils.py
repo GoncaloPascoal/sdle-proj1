@@ -2,10 +2,13 @@
 import binascii, pickle, os, zmq
 from time import sleep
 
-def save_state(state, path, sleep_ms=250):
+def save_state(state, path):
+    f = open(path, 'wb')
+    pickle.dump(state, f)
+
+def save_state_periodically(state, path, sleep_ms=250):
     while True:
-        f = open(path, 'wb')
-        pickle.dump(state, f)
+        save_state(state, path)
         sleep(sleep_ms / 1000)
 
 class Pipe:

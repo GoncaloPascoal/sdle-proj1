@@ -1,13 +1,13 @@
 
 import zmq
 
-import pickle, os, copyreg, threading, json
+import atexit, pickle, os, copyreg, threading, json
 from threading import Thread
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 
-from utils import Message, save_state
+from utils import Message, save_state, save_state_periodically
 
 NUM_THREADS = 20
 
@@ -107,9 +107,10 @@ def main():
     args = parser.parse_args()
 
     request_backup = False
-    path = f'sub{args.id}.obj'
-    if os.path.exists(path):
-        f = open(path, 'rb')
+    state_file = f'sub{args.id}.obj'
+
+    if os.path.exists(state_file):
+        f = open(state_file, 'rb')
         state = pickle.load(f)
 
         if state.topic_to_msgs:
@@ -150,7 +151,9 @@ def main():
     poller.register(sock_rpc  , zmq.POLLIN)
     poller.register(sock_get  , zmq.POLLIN)
 
-    thread_state = Thread(target=save_state, args=(state, f'sub{args.id}.obj'))
+    atexit.register(save_state, state, state_file)
+
+    thread_state = Thread(target=save_state_periodically, args=(state, state_file))
     thread_state.start()
 
     commands = {'GET', 'SUB', 'UNSUB'}
