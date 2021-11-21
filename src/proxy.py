@@ -4,12 +4,37 @@ import zmq
 import pickle, os
 from threading import Thread
 from argparse import ArgumentParser
-from time import sleep
 
-from utils import Pipe
+from utils import Message, save_state
 
-BACKUP_INTERVAL_MS = 250
-TOPIC_TO_MSGS = {}
+class ServiceState:
+    def __init__(self):
+        self._counter = 0
+        self.topic_queues = {}
+        self.topic_pointers = {}
+    
+    def next_id(self):
+        i = self._counter
+        self._counter += 1
+        return i
+
+def binary_search(lst, val):
+    low = 0
+    high = len(lst) - 1
+    mid = 0
+
+    while low <= high:
+        mid = (low + high) // 2
+
+        if lst[mid].i < val:
+            low = mid + 1
+        elif lst[mid].i > val:
+            high = mid - 1
+        else:
+            return mid
+
+    mid = mid + 1 if lst and lst[-1].i < val else mid
+    return mid
 
 def parse_msg(parts):
     r_id = int.from_bytes(parts[0], byteorder='big')
@@ -26,12 +51,6 @@ def listen(pipe_end: zmq.Socket):
             if e.errno == zmq.ETERM:
                 break
 
-def save_state():
-    while True:
-        f = open('service.obj', 'wb')
-        pickle.dump(TOPIC_TO_MSGS, f)
-        sleep(BACKUP_INTERVAL_MS / 1000)
-
 def main():
     parser = ArgumentParser(description='Proxy that acts as an intermediary \
             between publishers and subscribers, so that subscribers and \
@@ -44,9 +63,10 @@ def main():
 
     args = parser.parse_args()
 
+    state = ServiceState()
     if os.path.exists('service.obj'):
         f = open('service.obj', 'rb')
-        TOPIC_TO_MSGS = pickle.load(f)
+        state = pickle.load(f)
 
     context = zmq.Context()
 
@@ -58,28 +78,57 @@ def main():
     sock_sub = context.socket(zmq.XPUB)
     sock_sub.bind(f'tcp://*:{args.subscriber_port}')
 
-    pipe = Pipe(context)
-    listener = Thread(target=listen, args=(pipe.sock_in,))
-    listener.start()
+    sock_recover = context.socket(zmq.REP)
+    sock_recover.bind(f'tcp://*:{args.subscriber_port + 1}')
 
-    zmq.proxy(sock_sub, pipe.sock_out)
+    poller = zmq.Poller()
+    poller.register(sock_pub, zmq.POLLIN)
+    poller.register(sock_sub, zmq.POLLIN)
+    poller.register(sock_recover, zmq.POLLIN)
 
-    thread_state = Thread(target=save_state)
+    thread_state = Thread(target=save_state, args=(state, 'service.obj'))
     thread_state.start()
 
     while True:
-        parts = sock_pub.recv_multipart()
-        _, msg = parse_msg(parts)
-        sock_sub.send_string(msg)
+        events = poller.poll()
 
-        print(msg)
+        for event in events:
+            socket = event[0]
 
-        for t, q in TOPIC_TO_MSGS.items():
-            if msg.startswith(t):
-                q.put(msg)
+            if socket is sock_pub:
+                parts = sock_pub.recv_multipart()
+                _, msg_str = parse_msg(parts)
 
-        parts[1] = b''
-        sock_pub.send_multipart(parts)
+                msg = Message(state.next_id(), msg_str)
+                print(msg)
+                sock_sub.send_string(msg.s + ':' + str(msg.i))
+
+                for t, q in state.topic_queues.items():
+                    if msg.s.startswith(t):
+                        q.append(msg)
+
+                parts[1] = b''
+                sock_pub.send_multipart(parts)
+            elif socket is sock_sub:
+                msg_b = sock_sub.recv()
+                
+                if msg_b[0] == 1:
+                    # Subscription
+                    topic = msg_b[1:].decode('utf-8')
+                    state.topic_queues.setdefault(topic, [])
+                elif msg_b[0] == 2:
+                    parts = msg_b[1:].decode('utf-8').split(' ')
+                    sub_id, msg_id = parts[0], parts[1]
+                    print(f'{sub_id} acked message {msg_id}')
+            elif socket is sock_recover:
+                msg = sock_recover.recv_json()
+
+                r = set()
+                for k, v in msg.items():
+                    queue = state.topic_queues[k]
+                    r = r.union(queue[binary_search(queue, v):])
+                
+                sock_recover.send_pyobj(r)
 
 if __name__ == '__main__':
     main()
