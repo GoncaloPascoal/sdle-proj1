@@ -13,8 +13,9 @@ def main():
     parser = ArgumentParser(description='Process that publishes messages to topics.')
     
     parser.add_argument('port', help='publisher listening port')
-    parser.add_argument('proxy_addr', help='address of the proxy to connect to')
     parser.add_argument('proxy_port', type=int, help='port of the proxy to connect to')
+    parser.add_argument('--proxy_addr', help='address of the proxy to connect to (defaults to localhost)',
+        default='127.0.0.1', metavar='ADDR')
 
     args = parser.parse_args()
 
