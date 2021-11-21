@@ -26,14 +26,16 @@ def main():
     parser_sub   = subparsers.add_parser('SUB'  , help='subscribe to a specific topic')
     parser_unsub = subparsers.add_parser('UNSUB', help='unsubscribe to a specific topic')
 
-    parser_put.add_argument('ip', help='ip of target publisher')
     parser_put.add_argument('port', help='port of target publisher')
     parser_put.add_argument('message', help='message to send')
+    parser_put.add_argument('--ip', help='ip of target publisher (defaults to localhost)',
+        default='127.0.0.1', metavar='ADDR')
 
     for subparser in [parser_get, parser_sub, parser_unsub]:
-        subparser.add_argument('ip', help='ip of target subscriber')
         subparser.add_argument('port', help='port of target subscriber')
         subparser.add_argument('topic', help='topic identifier')
+        subparser.add_argument('--ip', help='ip of target subscriber (defaults to localhost)',
+            default='127.0.0.1', metavar='ADDR')
 
     args = parser.parse_args()
 
