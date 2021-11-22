@@ -49,12 +49,17 @@ def main():
 
     args = parser.parse_args()
 
+    if 'iter' not in args:
+        args.iter = 1
+    if 'delay' not in args:
+        args.delay = 0
+
     if args.iter < 1:
         print('Error: number of iterations must be higher than 0')
         exit(1)
-    
+
     if args.delay < 0:
-        print('Error: delay between iterations must be positive')
+        print('Error: delay between iterations must not be negative')
         exit(1)
 
     method_args = {}

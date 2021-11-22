@@ -98,7 +98,7 @@ def main():
     poller.register(sock_sub, zmq.POLLIN)
     poller.register(sock_recover, zmq.POLLIN)
 
-    atexit.register(save_state, state, 'service_obj')
+    atexit.register(save_state, state, 'service.obj')
 
     thread_state = Thread(target=save_state_periodically, args=(state, 'service.obj'))
     thread_state.start()
