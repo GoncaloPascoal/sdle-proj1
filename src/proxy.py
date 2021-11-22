@@ -38,12 +38,6 @@ def binary_search(lst: List[Message], val: int) -> int:
     mid = mid + 1 if lst and lst[-1].i < val else mid
     return mid
 
-def parse_msg(parts: list) -> Tuple[int, str]:
-    r_id = int.from_bytes(parts[0], byteorder='big')
-    msg = parts[1].decode('utf-8')
-
-    return r_id, msg
-
 def listen(pipe_end: zmq.Socket):
     while True:
         try:
@@ -83,7 +77,7 @@ def main():
     context = zmq.Context()
 
     # Socket for publishers
-    sock_pub = context.socket(zmq.ROUTER)
+    sock_pub = context.socket(zmq.REP)
     sock_pub.bind(f'tcp://*:{args.publisher_port}')
     
     # Socket for subscribers
@@ -110,8 +104,7 @@ def main():
             socket = event[0]
 
             if socket is sock_pub:
-                parts = sock_pub.recv_multipart()
-                _, msg_str = parse_msg(parts)
+                msg_str = sock_pub.recv_string()
 
                 msg = Message(state.next_id(), msg_str)
                 print(msg)
@@ -123,8 +116,7 @@ def main():
                             q.popleft()
                         q.append(msg)
 
-                parts[1] = b''
-                sock_pub.send_multipart(parts)
+                sock_pub.send_string('')
             elif socket is sock_sub:
                 msg_b = sock_sub.recv()
                 

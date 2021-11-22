@@ -22,7 +22,7 @@ def main():
     context = zmq.Context()
 
     # Connect to proxy
-    sock_proxy = context.socket(zmq.DEALER)
+    sock_proxy = context.socket(zmq.REQ)
     sock_proxy.connect(f'tcp://{args.proxy_addr}:{args.proxy_port}')
 
     # Socket for listening to commands
