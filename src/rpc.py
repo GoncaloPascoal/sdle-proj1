@@ -48,12 +48,18 @@ def main():
         subparser.add_argument('-d', '--delay', type=int, help='delay between iterations (in ms)', default=0, metavar='D')
 
     args = parser.parse_args()
-
-    if args.iter < 1:
+    
+    iter = 1
+    delay = 0
+    if args.method in set(['GET', 'PUT']):
+        iter = args.iter
+        delay = args.delay
+    
+    if iter < 1:
         print('Error: number of iterations must be higher than 0')
         exit(1)
     
-    if args.delay < 0:
+    if delay < 0:
         print('Error: delay between iterations must be positive')
         exit(1)
 
@@ -61,7 +67,7 @@ def main():
     for k in set(vars(args).keys()).difference(['ip', 'port', 'iter', 'delay']):
         method_args[k] = getattr(args, k)
 
-    send_command(args.ip, args.port, method_args, args.iter, args.delay)
+    send_command(args.ip, args.port, method_args, iter, delay)
 
 if __name__ == '__main__':
     main()
