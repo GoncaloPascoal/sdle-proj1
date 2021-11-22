@@ -1,14 +1,20 @@
 
 import zmq
 from argparse import ArgumentParser
+from time import sleep
 
-def send_command(ip, port, args):
+def send_command(ip, port, args, it, delay_ms):
     context = zmq.Context()
     sock = context.socket(zmq.REQ)
     sock.connect(f'tcp://{ip}:{port}')
 
-    sock.send_json(args)
-    print(sock.recv_string())
+    for _ in range(it):
+        sock.send_json(args)
+        print(sock.recv_string())
+        sleep(delay_ms / 1000)
+
+    sock.close()
+    context.destroy()
 
 def main():
     parser = ArgumentParser(description='Utility program to perform RPC on \
@@ -37,13 +43,25 @@ def main():
         subparser.add_argument('--ip', help='ip of target subscriber (defaults to localhost)',
             default='127.0.0.1', metavar='ADDR')
 
+    for subparser in [parser_get, parser_put]:
+        subparser.add_argument('-i', '--iter', type=int, help='number of iterations', default=1, metavar='I')
+        subparser.add_argument('-d', '--delay', type=int, help='delay between iterations (in ms)', default=0, metavar='D')
+
     args = parser.parse_args()
 
+    if args.iter < 1:
+        print('Error: number of iterations must be higher than 0')
+        exit(1)
+    
+    if args.delay < 0:
+        print('Error: delay between iterations must be positive')
+        exit(1)
+
     method_args = {}
-    for k in set(vars(args).keys()).difference(['ip', 'port']):
+    for k in set(vars(args).keys()).difference(['ip', 'port', 'iter', 'delay']):
         method_args[k] = getattr(args, k)
 
-    send_command(args.ip, args.port, method_args)
+    send_command(args.ip, args.port, method_args, args.iter, args.delay)
 
 if __name__ == '__main__':
     main()
