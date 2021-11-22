@@ -13,7 +13,7 @@ class ServiceState:
     def __init__(self):
         self._counter = 0
         self.topic_queues = {}
-        self.topic_pointers = {}
+        self.topic_subscribers = {}
     
     def next_id(self) -> int:
         i = self._counter
@@ -132,10 +132,20 @@ def main():
                     # Subscription
                     topic = msg_b[1:].decode('utf-8')
                     state.topic_queues.setdefault(topic, deque())
+                    state.topic_subscribers.setdefault(topic, 0)
                 elif msg_b[0] == 2:
-                    parts = msg_b[1:].decode('utf-8').split(' ')
-                    sub_id, msg_id = parts[0], parts[1]
-                    print(f'{sub_id} acked message {msg_id}')
+                    # Genuine unsub call, not result of crash
+                    topic = msg_b[1:].decode('utf-8')
+                    state.topic_subscribers[topic] -= 1
+                    if state.topic_subscribers[topic] == 0:
+                        # No one subscribed to the topic, drop all cached messages
+                        del state.topic_queues[topic]
+                        del state.topic_subscribers[topic]
+                elif msg_b[0] == 3:
+                    # Genuine sub call, not result of crash recovery
+                    topic = msg_b[1:].decode('utf-8')
+                    state.topic_subscribers[topic] += 1
+
             elif socket is sock_recover:
                 msg = sock_recover.recv_json()
 

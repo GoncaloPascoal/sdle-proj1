@@ -56,6 +56,7 @@ def sub(sock_proxy: zmq.Socket, topic: str) -> bool:
     sock_proxy.send(b'\x01' + bytes(topic, 'utf-8'))
 
     if topic not in state.topic_to_msgs:
+        sock_proxy.send(b'\x03' + bytes(topic, 'utf-8'))
         state.topic_to_msgs[topic] = TopicInfo()
 
     print(f'SUB to topic: {topic}')
@@ -66,6 +67,7 @@ def unsub(sock_proxy: zmq.Socket, topic: str) -> bool:
     sock_proxy.send(b'\x00' + bytes(topic, 'utf-8'))
 
     if topic in state.topic_to_msgs:
+        sock_proxy.send(b'\x02' + bytes(topic, 'utf-8'))
         del state.topic_to_msgs[topic]
 
     print(f'UNSUB from topic: {topic}')
@@ -171,7 +173,6 @@ def main():
                 msg_str: str = sock_proxy.recv_string()
                 sep_idx = msg_str.rindex(':')
                 msg = Message(int(msg_str[sep_idx + 1:]), msg_str[:sep_idx])
-                sock_proxy.send(b'\x02' + bytes(args.id + ' ' + str(msg.i), 'utf-8'))
                 route_msg_to_queues(msg)
             elif socket is sock_rpc:
                 parts = sock_rpc.recv_multipart()
