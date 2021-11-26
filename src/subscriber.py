@@ -196,9 +196,9 @@ def main():
                         pool.submit(handle_get_command, context, topic, parts)
                         continue
                     elif method == 'SUB':
-                        sub(sock_proxy, topic)
+                        sub(sock_proxy, topic, args.id)
                     elif method == 'UNSUB':
-                        unsub(sock_proxy, topic)
+                        unsub(sock_proxy, topic, args.id)
                     
                     parts[2] = b'OK'
                 else:
