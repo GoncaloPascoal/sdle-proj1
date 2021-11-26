@@ -9,6 +9,8 @@ from typing import List, Tuple
 
 from utils import Message, save_state, save_state_periodically
 
+SUB_TIMEOUT = 400
+
 class ServiceState:
     def __init__(self):
         self._counter = 0
@@ -46,6 +48,26 @@ def listen(pipe_end: zmq.Socket):
         except zmq.ZMQError as e:
             if e.errno == zmq.ETERM:
                 break
+
+def process_sub_message(state, msg_b):
+    if msg_b[0] == 1:
+        # Subscription
+        topic = msg_b[1:].decode('utf-8')
+        state.topic_queues.setdefault(topic, deque())
+        state.topic_subscribers.setdefault(topic, 0)
+    elif msg_b[0] == 2:
+        # Genuine unsub call, not result of crash
+        topic = msg_b[1:].decode('utf-8')
+        state.topic_subscribers[topic] -= 1
+        if state.topic_subscribers[topic] == 0:
+            # No one subscribed to the topic, drop all cached messages
+            print(f'Drop topic {topic}')
+            del state.topic_queues[topic]
+            del state.topic_subscribers[topic]
+    elif msg_b[0] == 3:
+        # Genuine sub call, not result of crash recovery
+        topic = msg_b[1:].decode('utf-8')
+        state.topic_subscribers[topic] += 1
 
 def main():
     parser = ArgumentParser(description='Proxy that acts as an intermediary \
@@ -88,14 +110,28 @@ def main():
     sock_recover.bind(f'tcp://*:{args.subscriber_port + 1}')
 
     poller = zmq.Poller()
-    poller.register(sock_pub, zmq.POLLIN)
     poller.register(sock_sub, zmq.POLLIN)
-    poller.register(sock_recover, zmq.POLLIN)
 
     atexit.register(save_state, state, 'service.obj')
 
     thread_state = Thread(target=save_state_periodically, args=(state, 'service.obj'))
     thread_state.start()
+
+    if state.topic_subscribers:
+        # Service recovered from a crash
+        # Wait for subscriptions before sending messages to XPUB socket
+        while True:
+            events = poller.poll(SUB_TIMEOUT)
+
+            if len(events) == 0:
+                break
+
+            for event in events:
+                msg_b = sock_sub.recv()
+                process_sub_message(state, msg_b)
+
+    poller.register(sock_pub, zmq.POLLIN)
+    poller.register(sock_recover, zmq.POLLIN)
 
     while True:
         events = poller.poll()
@@ -103,7 +139,10 @@ def main():
         for event in events:
             socket = event[0]
 
-            if socket is sock_pub:
+            if socket is sock_sub:
+                msg_b = sock_sub.recv()
+                process_sub_message(state, msg_b)
+            elif socket is sock_pub:
                 msg_str = sock_pub.recv_string()
 
                 msg = Message(state.next_id(), msg_str)
@@ -117,27 +156,6 @@ def main():
                         q.append(msg)
 
                 sock_pub.send_string('')
-            elif socket is sock_sub:
-                msg_b = sock_sub.recv()
-                
-                if msg_b[0] == 1:
-                    # Subscription
-                    topic = msg_b[1:].decode('utf-8')
-                    state.topic_queues.setdefault(topic, deque())
-                    state.topic_subscribers.setdefault(topic, 0)
-                elif msg_b[0] == 2:
-                    # Genuine unsub call, not result of crash
-                    topic = msg_b[1:].decode('utf-8')
-                    state.topic_subscribers[topic] -= 1
-                    if state.topic_subscribers[topic] == 0:
-                        # No one subscribed to the topic, drop all cached messages
-                        del state.topic_queues[topic]
-                        del state.topic_subscribers[topic]
-                elif msg_b[0] == 3:
-                    # Genuine sub call, not result of crash recovery
-                    topic = msg_b[1:].decode('utf-8')
-                    state.topic_subscribers[topic] += 1
-
             elif socket is sock_recover:
                 msg = sock_recover.recv_json()
 
