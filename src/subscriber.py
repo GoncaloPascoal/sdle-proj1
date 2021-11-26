@@ -50,24 +50,24 @@ def get(topic: str) -> bool:
 
     return False
 
-def sub(sock_proxy: zmq.Socket, topic: str) -> bool:
+def sub(sock_proxy: zmq.Socket, topic: str, sub_id: str) -> bool:
     global state
 
     sock_proxy.send(b'\x01' + bytes(topic, 'utf-8'))
 
     if topic not in state.topic_to_msgs:
-        sock_proxy.send(b'\x03' + bytes(topic, 'utf-8'))
+        sock_proxy.send(b'\x03' + bytes(topic + ':' + sub_id, 'utf-8'))
         state.topic_to_msgs[topic] = TopicInfo()
 
     print(f'SUB to topic: {topic}')
 
-def unsub(sock_proxy: zmq.Socket, topic: str) -> bool:
+def unsub(sock_proxy: zmq.Socket, topic: str, sub_id: str) -> bool:
     global state
 
     sock_proxy.send(b'\x00' + bytes(topic, 'utf-8'))
 
     if topic in state.topic_to_msgs:
-        sock_proxy.send(b'\x02' + bytes(topic, 'utf-8'))
+        sock_proxy.send(b'\x02' + bytes(topic + ':' + sub_id, 'utf-8'))
         del state.topic_to_msgs[topic]
 
     print(f'UNSUB from topic: {topic}')
@@ -137,7 +137,10 @@ def main():
     if request_backup:
         sock_backup = context.socket(zmq.REQ)
         sock_backup.connect(f'tcp://{args.proxy_addr}:{args.proxy_port + 1}')
-        obj = {topic: info.last_id for topic, info in state.topic_to_msgs.items()}
+        obj = {
+            'id': args.id,
+            'topics': {topic: info.last_id for topic, info in state.topic_to_msgs.items()},
+        }
         sock_backup.send_json(obj)
         msgs = sorted(list(sock_backup.recv_pyobj()), key=lambda x: x.i)
 
