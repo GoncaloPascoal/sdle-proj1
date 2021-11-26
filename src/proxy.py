@@ -16,6 +16,7 @@ class ServiceState:
         self._counter = 0
         self.topic_queues = {}
         self.topic_subscribers = {}
+        self.topic_first_msg = {}
     
     def next_id(self) -> int:
         i = self._counter
@@ -57,17 +58,30 @@ def process_sub_message(state, msg_b):
         state.topic_subscribers.setdefault(topic, 0)
     elif msg_b[0] == 2:
         # Genuine unsub call, not result of crash
-        topic = msg_b[1:].decode('utf-8')
+        parts = msg_b[1:].decode('utf-8')
+        idx = parts.rindex(':')
+        topic, sub_id = parts[:idx], parts[idx + 1:]
+
         state.topic_subscribers[topic] -= 1
+        del state.topic_first_msg[topic][sub_id]
+
         if state.topic_subscribers[topic] == 0:
             # No one subscribed to the topic, drop all cached messages
             print(f'Drop topic {topic}')
             del state.topic_queues[topic]
             del state.topic_subscribers[topic]
+            del state.topic_first_msg[topic]
     elif msg_b[0] == 3:
         # Genuine sub call, not result of crash recovery
-        topic = msg_b[1:].decode('utf-8')
+        parts = msg_b[1:].decode('utf-8')
+        idx = parts.rindex(':')
+        topic, sub_id = parts[:idx], parts[idx + 1:]
+
         state.topic_subscribers[topic] += 1
+
+        state.topic_first_msg.setdefault(topic, {})
+        queue = state.topic_queues[topic]
+        state.topic_first_msg[topic][sub_id] = queue[-1].i if queue else -1
 
 def main():
     parser = ArgumentParser(description='Proxy that acts as an intermediary \
@@ -158,11 +172,15 @@ def main():
                 sock_pub.send_string('')
             elif socket is sock_recover:
                 msg = sock_recover.recv_json()
+                sub_id = msg['id']
 
                 r = set()
-                for k, v in msg.items():
+                for k, v in msg['topics'].items():
+                    if v == -1:
+                        v = state.topic_first_msg[k][sub_id]
+
                     queue = list(state.topic_queues[k])
-                    r = r.union(queue[binary_search(queue, v):])
+                    r = r.union(queue[binary_search(queue, v) + 1:])
                 
                 sock_recover.send_pyobj(r)
 
