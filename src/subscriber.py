@@ -3,7 +3,7 @@ import zmq
 
 import atexit, pickle, os, copyreg, threading, json
 from threading import Thread
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
 
@@ -100,7 +100,12 @@ def main():
 
     parser = ArgumentParser(description='Process that subscribes to topics and receives messages.')
     
-    parser.add_argument('id', help='id of the subscriber')
+    def alnum(x):
+        if not x.isalnum():
+            raise ArgumentTypeError('ID must be alphanumeric')
+        return x
+
+    parser.add_argument('id', help='id of the subscriber', type=alnum)
     parser.add_argument('port', help='subscriber listening port')
     parser.add_argument('proxy_port', type=int, help='port of the proxy to connect to')
     parser.add_argument('--proxy_addr', help='address of the proxy to connect to (defaults to localhost)',
