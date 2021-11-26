@@ -81,7 +81,7 @@ def process_sub_message(state, msg_b):
 
         state.topic_first_msg.setdefault(topic, {})
         queue = state.topic_queues[topic]
-        state.topic_first_msg[topic][sub_id] = queue[-1] if queue else -1
+        state.topic_first_msg[topic][sub_id] = queue[-1].i if queue else -1
 
 def main():
     parser = ArgumentParser(description='Proxy that acts as an intermediary \
